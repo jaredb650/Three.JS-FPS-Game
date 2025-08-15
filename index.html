@@ -177,6 +177,12 @@
             100% { opacity: 0; transform: translateX(-100px); }
         }
         
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        
         .fps-counter {
             position: fixed;
             top: 30px;
@@ -343,8 +349,16 @@
         <div class="debug-info" id="debugInfo"></div>
     </div>
     
+    <!-- Splash Screen -->
+    <div class="menu-screen" id="splashScreen" style="display: flex; cursor: pointer;">
+        <div style="text-align: center;">
+            <div class="menu-title" style="font-size: 72px; margin-bottom: 50px;">OVERPOWERED</div>
+            <div class="menu-subtitle" style="font-size: 24px; color: #888; animation: pulse 2s infinite;">Click Anywhere</div>
+        </div>
+    </div>
+    
     <!-- Menu Screen -->
-    <div class="menu-screen" id="menuScreen">
+    <div class="menu-screen" id="menuScreen" style="display: none;">
         <div class="menu-title">OVERPOWERED</div>
         <div class="menu-subtitle">Unleash Chaos. Survive the Onslaught.</div>
         <div class="menu-instructions">
@@ -462,6 +476,7 @@
     <script>
         // Game States
         const GameState = {
+            SPLASH: 'splash',
             MENU: 'menu',
             PLAYING: 'playing',
             PAUSED: 'paused',
@@ -518,6 +533,7 @@
             autocannon_fire2: this.createSound('sounds/autocannon_fire2.wav', 0.79),
             autocannon_zoom: this.createSound('sounds/autocannon_zoom.wav', 0.7),
                     '30mmshell_flyby': this.createSound('sounds/30mmshell_flyby.mp3', 0.5),
+                    menu_select: this.createSound('sounds/menu_select.wav', 0.7),
                     '30mmshell_explode': this.createSound('sounds/30mmshell_explode.mp3', 1.6),
                     warthog_flyby: this.createSound('sounds/warthog_flyby.wav', 0.8),  // A-10 Warthog flyby sound
                     playerHit: this.createSound('sounds/enemy_hit.mp3', 0.6), // Reuse enemy_hit for player
@@ -695,6 +711,167 @@
                             instance.playbackRate = rate;
                         });
                     }
+                }
+            }
+        }
+
+        // Soundtrack Manager for background music
+        class SoundtrackManager {
+            constructor() {
+                this.currentTrack = null;
+                this.currentState = 'menu'; // menu, easy, hard
+                this.volume = 0.3; // Background music should be quieter
+                this.hasStarted = false; // Track if music has ever started
+                
+                // Define track lists for each state
+                this.tracks = {
+                    menu: [
+                        'soundtrack/menu/15. The Acolyte — Neurotoxin.flac'
+                    ],
+                    easy: [
+                        'soundtrack/easy/01-bad_boy_pete-who_is_better.mp3',
+                        'soundtrack/easy/01-grady_g-turn_the_bass_up_(original_mix).mp3',
+                        'soundtrack/easy/01-minor_dott_and_metal_ed-enter_the_darkness__d.a.v.e._the_drummers_acid_remix.mp3',
+                        'soundtrack/easy/03-bad_boy_pete-hard_roller_darkness.mp3',
+                        'soundtrack/easy/Bad Boy Pete - Tougher Than Tough (Original Mix).mp3',
+                        'soundtrack/easy/DOGMA ( UK ) - Geordie Stomp (Original Mix).mp3',
+                        'soundtrack/easy/Mortal Sins - Banshee (Original Mix).mp3',
+                        'soundtrack/easy/Mortal Sins - Gunfight (Original Mix).mp3',
+                        'soundtrack/easy/Mortal Sins - I Will Find U (Original Mix).mp3',
+                        'soundtrack/easy/Mortal Sins - Nightshift (Original Mix).mp3',
+                        'soundtrack/easy/Mortal Sins - Pandemonium (Original Mix).mp3',
+                        'soundtrack/easy/Mortal Sins - Poltergeist (Original Mix).mp3',
+                        'soundtrack/easy/Various - Tense Trax #02 - 02 - Bad Boy Pete - My Pain Is Forever.mp3'
+                    ],
+                    hard: [
+                        'soundtrack/hard/09. Some More.mp3',
+                        'soundtrack/hard/Alek Szahala - Balag Lamarà.mp3',
+                        'soundtrack/hard/Alek Szahala - Caballo.mp3',
+                        'soundtrack/hard/Alek Szahala - Invitation.mp3',
+                        'soundtrack/hard/Alek Szahala - Unicorn Grove.mp3',
+                        'soundtrack/hard/Alek_Szahala_-_Freezing_Clouds.wav',
+                        'soundtrack/hard/Are Am Eye Kronos Remix.mp3',
+                        'soundtrack/hard/HDIZE1043_2009_06_23_Hybridize_Substanced_-_Freeform_Mercury_Mastered_320k_44k_mp3.mp3',
+                        'soundtrack/hard/Hollow (Meka Remaster).wav',
+                        'soundtrack/hard/Mirage(Meka Remaster).wav',
+                        'soundtrack/hard/Mortality(Meka Remaster).wav'
+                    ]
+                };
+                
+                // Track history to avoid immediate repeats when possible
+                this.recentlyPlayed = {
+                    menu: [],
+                    easy: [],
+                    hard: []
+                };
+            }
+            
+            playRandomTrack(state) {
+                // Stop current track if playing
+                if (this.currentTrack) {
+                    this.currentTrack.pause();
+                    this.currentTrack.currentTime = 0;
+                    this.currentTrack.removeEventListener('ended', this.onTrackEnded);
+                }
+                
+                // Get track list for current state
+                const trackList = this.tracks[state];
+                if (!trackList || trackList.length === 0) {
+                    console.warn(`No tracks available for state: ${state}`);
+                    return;
+                }
+                
+                // Select a random track, avoiding recent plays if possible
+                let selectedTrack;
+                const recentList = this.recentlyPlayed[state];
+                
+                if (trackList.length === 1) {
+                    // Only one track, play it
+                    selectedTrack = trackList[0];
+                } else if (recentList.length >= trackList.length - 1) {
+                    // All tracks recently played, clear history and pick random
+                    this.recentlyPlayed[state] = [];
+                    selectedTrack = trackList[Math.floor(Math.random() * trackList.length)];
+                } else {
+                    // Pick a track that hasn't been played recently
+                    const availableTracks = trackList.filter(track => !recentList.includes(track));
+                    selectedTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
+                }
+                
+                // Add to recently played
+                recentList.push(selectedTrack);
+                if (recentList.length > Math.floor(trackList.length / 2)) {
+                    recentList.shift(); // Keep only half the tracks in history
+                }
+                
+                // Create and play the track
+                this.currentTrack = new Audio(selectedTrack);
+                this.currentTrack.volume = this.volume;
+                this.currentState = state;
+                
+                // Add ended event listener
+                this.onTrackEnded = () => {
+                    this.playRandomTrack(this.currentState);
+                };
+                this.currentTrack.addEventListener('ended', this.onTrackEnded);
+                
+                // Play the track
+                this.currentTrack.play().catch(error => {
+                    console.warn('Failed to play track:', error);
+                });
+                
+                console.log(`Playing: ${selectedTrack.split('/').pop()} (${state} music)`);
+            }
+            
+            switchToMenu() {
+                this.hasStarted = true;
+                this.playRandomTrack('menu');
+            }
+            
+            switchToEasy() {
+                this.hasStarted = true;
+                this.playRandomTrack('easy');
+            }
+            
+            switchToHard() {
+                this.hasStarted = true;
+                this.playRandomTrack('hard');
+            }
+            
+            startMenuMusicIfNeeded() {
+                if (!this.hasStarted) {
+                    this.hasStarted = true;
+                    this.playRandomTrack('menu');
+                }
+            }
+            
+            stop() {
+                if (this.currentTrack) {
+                    this.currentTrack.pause();
+                    this.currentTrack.currentTime = 0;
+                    this.currentTrack.removeEventListener('ended', this.onTrackEnded);
+                    this.currentTrack = null;
+                }
+            }
+            
+            setVolume(volume) {
+                this.volume = Math.max(0, Math.min(1, volume));
+                if (this.currentTrack) {
+                    this.currentTrack.volume = this.volume;
+                }
+            }
+            
+            pause() {
+                if (this.currentTrack) {
+                    this.currentTrack.pause();
+                }
+            }
+            
+            resume() {
+                if (this.currentTrack) {
+                    this.currentTrack.play().catch(error => {
+                        console.warn('Failed to resume track:', error);
+                    });
                 }
             }
         }
@@ -3107,6 +3284,76 @@
                 this.weaponModels.smg = smgGroup;
                 this.scene.add(smgGroup);
                 smgGroup.visible = false;
+                
+                // Create left-hand SMG for akimbo effect during berserk
+                this.createLeftHandSMG();
+            }
+            
+            createLeftHandSMG() {
+                // Clone the right-hand SMG for the left hand
+                const leftSMGGroup = new THREE.Group();
+                
+                // SMG body
+                const bodyGeometry = new THREE.BoxGeometry(0.12, 0.2, 0.5);
+                const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.set(0, 0, 0);
+                
+                // SMG barrel
+                const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8);
+                const barrelMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 });
+                const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+                barrel.position.set(0, 0.03, -0.35);
+                barrel.rotation.x = Math.PI / 2;
+                
+                // SMG grip
+                const gripGeometry = new THREE.BoxGeometry(0.06, 0.12, 0.1);
+                const gripMaterial = new THREE.MeshBasicMaterial({ color: 0x555555 });
+                const grip = new THREE.Mesh(gripGeometry, gripMaterial);
+                grip.position.set(0, -0.12, 0.15);
+                grip.rotation.z = 0.1; // Mirror the rotation
+                
+                // SMG Magazine
+                const magazine = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.05, 0.1, 0.08),
+                    new THREE.MeshBasicMaterial({ color: 0x777777 })
+                );
+                magazine.position.set(0, -0.1, 0.05);
+                
+                // Muzzle flash
+                const flashGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const muzzleFlash = new THREE.Mesh(
+                    flashGeometry,
+                    new THREE.MeshBasicMaterial({ 
+                        color: 0xffff00, 
+                        transparent: true, 
+                        opacity: 0 
+                    })
+                );
+                muzzleFlash.position.set(0, 0.03, -0.55);
+                
+                // Add all parts to left SMG group
+                leftSMGGroup.add(body);
+                leftSMGGroup.add(barrel);
+                leftSMGGroup.add(grip);
+                leftSMGGroup.add(magazine);
+                leftSMGGroup.add(muzzleFlash);
+                
+                // Set render order
+                leftSMGGroup.renderOrder = 1000;
+                leftSMGGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        child.renderOrder = 1000;
+                    }
+                });
+                
+                // Store references
+                leftSMGGroup.userData.magazine = magazine;
+                leftSMGGroup.userData.muzzleFlash = muzzleFlash;
+                
+                this.weaponModels.smgLeft = leftSMGGroup;
+                this.scene.add(leftSMGGroup);
+                leftSMGGroup.visible = false;
             }
 
             createRocketLauncherModel() {
@@ -3764,6 +4011,31 @@
                 this.weaponGroup.rotation.y += this.weaponRotationOffset.y + this.swingOffset.rotation.y;
                 this.weaponGroup.rotation.z += this.swingOffset.rotation.z;
                 
+                // Handle left-hand SMG for akimbo effect during berserk
+                if (this.currentWeapon === 'smg' && this.berserkActive && this.weaponModels.smgLeft) {
+                    // Show left SMG
+                    this.weaponModels.smgLeft.visible = true;
+                    
+                    // Calculate left-hand offset (mirror of right hand)
+                    const leftOffset = new THREE.Vector3(-0.35, -0.25, -0.6); // Mirrored X position
+                    leftOffset.x += this.swingOffset.position.x;
+                    leftOffset.y += this.swingOffset.position.y;
+                    leftOffset.z += this.swingOffset.position.z;
+                    leftOffset.applyQuaternion(camera.quaternion);
+                    
+                    // Position left SMG
+                    this.weaponModels.smgLeft.position.copy(camera.position).add(leftOffset);
+                    
+                    // Rotate left SMG to match camera with mirrored rotation
+                    this.weaponModels.smgLeft.rotation.copy(camera.rotation);
+                    this.weaponModels.smgLeft.rotation.x += this.swingOffset.rotation.x;
+                    this.weaponModels.smgLeft.rotation.y += -this.weaponRotationOffset.y + this.swingOffset.rotation.y; // Mirror Y rotation
+                    this.weaponModels.smgLeft.rotation.z += -this.swingOffset.rotation.z; // Mirror Z rotation
+                } else if (this.weaponModels.smgLeft) {
+                    // Hide left SMG when not in berserk mode or not using SMG
+                    this.weaponModels.smgLeft.visible = false;
+                }
+                
                 // Update weapon sway based on mouse movement
                 if (inputManager.isPointerLocked) {
                     const mouseDelta = inputManager.getMouseDelta();
@@ -3823,11 +4095,27 @@
                         const dropPhase = reloadProgress / 0.3;
                         this.magazine.position.y = -0.1 - dropPhase * 0.25;
                         this.weaponGroup.rotation.x += dropPhase * 0.2;
+                        
+                        // Also animate left SMG magazine if in berserk mode
+                        if (this.currentWeapon === 'smg' && this.berserkActive && this.weaponModels.smgLeft) {
+                            const leftMag = this.weaponModels.smgLeft.userData.magazine;
+                            if (leftMag) {
+                                leftMag.position.y = -0.1 - dropPhase * 0.25;
+                            }
+                        }
                     } else if (reloadProgress < 0.7) {
                         // Insert new magazine
                         const insertPhase = (reloadProgress - 0.3) / 0.4;
                         this.magazine.position.y = -0.35 + insertPhase * 0.25;
                         this.weaponGroup.rotation.x += 0.2 * (1 - insertPhase);
+                        
+                        // Also animate left SMG magazine if in berserk mode
+                        if (this.currentWeapon === 'smg' && this.berserkActive && this.weaponModels.smgLeft) {
+                            const leftMag = this.weaponModels.smgLeft.userData.magazine;
+                            if (leftMag) {
+                                leftMag.position.y = -0.35 + insertPhase * 0.25;
+                            }
+                        }
                     } else {
                         // Rack slide
                         const rackPhase = (reloadProgress - 0.7) / 0.3;
@@ -3835,6 +4123,14 @@
                         // Move weapon forward and back
                         const rackOffset = Math.sin(rackPhase * Math.PI) * 0.1;
                         this.weaponOffset.z = -0.6 + rackOffset;
+                        
+                        // Also reset left SMG magazine if in berserk mode
+                        if (this.currentWeapon === 'smg' && this.berserkActive && this.weaponModels.smgLeft) {
+                            const leftMag = this.weaponModels.smgLeft.userData.magazine;
+                            if (leftMag) {
+                                leftMag.position.y = -0.1;
+                            }
+                        }
                     }
                     
                     if (reloadProgress >= 1.0) {
@@ -3842,6 +4138,14 @@
                         // Reset magazine position
                         this.magazine.position.y = -0.1;
                         this.weaponOffset.z = -0.6;
+                        
+                        // Also reset left SMG magazine if in berserk mode
+                        if (this.currentWeapon === 'smg' && this.berserkActive && this.weaponModels.smgLeft) {
+                            const leftMag = this.weaponModels.smgLeft.userData.magazine;
+                            if (leftMag) {
+                                leftMag.position.y = -0.1;
+                            }
+                        }
                     }
                 }
             }
@@ -3965,6 +4269,17 @@
                         this.muzzleFlash.material.opacity = 1;
                         setTimeout(() => {
                             if (this.muzzleFlash) this.muzzleFlash.material.opacity = 0;
+                        }, 50);
+                    }
+                }
+                
+                // Also trigger left SMG muzzle flash if in berserk mode
+                if (this.currentWeapon === 'smg' && this.berserkActive && this.weaponModels.smgLeft) {
+                    const leftFlash = this.weaponModels.smgLeft.userData.muzzleFlash;
+                    if (leftFlash) {
+                        leftFlash.material.opacity = 1;
+                        setTimeout(() => {
+                            if (leftFlash) leftFlash.material.opacity = 0;
                         }, 50);
                     }
                 }
@@ -4885,11 +5200,7 @@
                 });
                 
                 // Pointer lock events
-                document.addEventListener('click', (e) => {
-                    if (!this.isPointerLocked) {
-                        this.requestPointerLock();
-                    }
-                });
+                // Removed automatic pointer lock on click - now only triggered by Start Game button
                 
                 document.addEventListener('pointerlockchange', () => {
                     this.isPointerLocked = document.pointerLockElement === document.body;
@@ -6624,7 +6935,8 @@
 
         // Wave System
         class WaveSystem {
-            constructor() {
+            constructor(game) {
+                this.game = game; // Reference to main game
                 this.currentWave = 1;
                 this.enemiesPerWave = 10; // Back to original higher count
                 this.enemySpawnRate = 1; // Back to faster spawn rate (1 enemy per second)
@@ -6677,6 +6989,12 @@
 
             nextWave() {
                 this.currentWave++;
+                
+                // Check if we've reached wave 10 and switch to hard music
+                if (this.currentWave === 10 && this.game && this.game.soundtrackManager) {
+                    this.game.soundtrackManager.switchToHard();
+                }
+                
                 this.startWave();
             }
 
@@ -6912,13 +7230,15 @@ Velocity: ${player.velocity.length().toFixed(2)}
         // Main game class
         class FPSGame {
             constructor() {
-                this.state = GameState.MENU;
+                this.state = GameState.SPLASH;
+                this.shouldStartGame = false; // Track if start button was clicked
                 this.scene = null;
                 this.camera = null;
                 this.renderer = null;
                 this.player = null;
                 this.inputManager = null;
                 this.audioManager = null;
+                this.soundtrackManager = null;
                 this.weaponSystem = null;
                 this.particleSystem = null;
                 this.waveSystem = null;
@@ -6984,6 +7304,9 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 // Create audio manager
                 this.audioManager = new AudioManager();
                 
+                // Create soundtrack manager (don't start music yet - wait for user interaction)
+                this.soundtrackManager = new SoundtrackManager();
+                
                 // Create player
                 this.player = new Player(this.camera, this.scene, this.audioManager);
                 
@@ -7000,8 +7323,8 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 // Store reference for ragdoll blood trails
                 window.currentGame = this;
                 
-                // Create wave system
-                this.waveSystem = new WaveSystem();
+                // Create wave system (pass game reference for music switching)
+                this.waveSystem = new WaveSystem(this);
                 
                 // Create game manager
                 this.gameManager = new GameManager();
@@ -7115,6 +7438,9 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 this.state = GameState.PLAYING;
                 this.hideAllScreens();
                 
+                // Switch to easy music
+                this.soundtrackManager.switchToEasy();
+                
                 // Reset game state
                 this.gameManager.reset();
                 this.player.health = this.player.maxHealth;
@@ -7133,8 +7459,8 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 this.bulletPool.releaseAll();
                 this.enemyBulletPool.releaseAll();
                 
-                // Start first wave
-                this.waveSystem = new WaveSystem();
+                // Start first wave (pass game reference for music switching)
+                this.waveSystem = new WaveSystem(this);
                 this.waveSystem.startWave();
                 
                 this.uiManager.updateEnemyCount(this.enemies.length);
@@ -7145,12 +7471,25 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 this.state = GameState.PAUSED;
                 this.inputManager.releasePointerLock();
                 document.getElementById('pauseScreen').style.display = 'flex';
+                
+                // Pause soundtrack
+                if (this.soundtrackManager) {
+                    this.soundtrackManager.pause();
+                }
             }
 
             resumeGame() {
                 if (this.state !== GameState.PAUSED) return;
                 this.state = GameState.PLAYING;
                 document.getElementById('pauseScreen').style.display = 'none';
+                
+                // Request pointer lock again
+                this.inputManager.requestPointerLock();
+                
+                // Resume soundtrack
+                if (this.soundtrackManager) {
+                    this.soundtrackManager.resume();
+                }
             }
 
             restartGame() {
@@ -7160,6 +7499,9 @@ Velocity: ${player.velocity.length().toFixed(2)}
             endGame() {
                 this.state = GameState.GAME_OVER;
                 this.inputManager.releasePointerLock();
+                
+                // Switch back to menu music
+                this.soundtrackManager.switchToMenu();
                 
                 const isHighScore = this.gameManager.checkHighScore();
                 const finalStats = `
@@ -7178,9 +7520,19 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 this.state = GameState.MENU;
                 this.hideAllScreens();
                 document.getElementById('menuScreen').style.display = 'flex';
+                
+                // Start menu music when entering main menu
+                this.soundtrackManager.startMenuMusicIfNeeded();
+            }
+            
+            showSplash() {
+                this.state = GameState.SPLASH;
+                this.hideAllScreens();
+                document.getElementById('splashScreen').style.display = 'flex';
             }
 
             hideAllScreens() {
+                document.getElementById('splashScreen').style.display = 'none';
                 document.getElementById('menuScreen').style.display = 'none';
                 document.getElementById('gameOverScreen').style.display = 'none';
                 document.getElementById('pauseScreen').style.display = 'none';
@@ -8304,9 +8656,14 @@ Velocity: ${player.velocity.length().toFixed(2)}
                 
                 // Handle different game states
                 switch (this.state) {
+                    case GameState.SPLASH:
+                        // Just waiting for user to click
+                        break;
+                        
                     case GameState.MENU:
-                        // Handle menu input
-                        if (this.inputManager.isPointerLocked) {
+                        // Handle menu input - only start if button was clicked
+                        if (this.shouldStartGame && this.inputManager.isPointerLocked) {
+                            this.shouldStartGame = false; // Reset flag
                             this.startGame();
                         }
                         break;
@@ -8342,11 +8699,44 @@ Velocity: ${player.velocity.length().toFixed(2)}
         window.addEventListener('load', () => {
             const game = new FPSGame();
             
+            // Handle Splash Screen click
+            const splashScreen = document.getElementById('splashScreen');
+            if (splashScreen) {
+                splashScreen.addEventListener('click', (e) => {
+                    if (game.state === GameState.SPLASH) {
+                        // Play menu select sound
+                        game.audioManager.play('menu_select');
+                        // Show main menu
+                        game.showMenu();
+                    }
+                });
+            }
+            
+            // Handle clicking on canvas during gameplay to re-acquire pointer lock
+            document.addEventListener('click', (e) => {
+                // Only re-acquire pointer lock if game is playing or paused and pointer is not locked
+                if ((game.state === GameState.PLAYING || game.state === GameState.PAUSED) && 
+                    !game.inputManager.isPointerLocked) {
+                    
+                    // If paused, resume the game
+                    if (game.state === GameState.PAUSED) {
+                        game.resumeGame();
+                    } else {
+                        // Just re-acquire pointer lock
+                        game.inputManager.requestPointerLock();
+                    }
+                }
+            });
+            
             // Handle Start Game button
             const startButton = document.getElementById('startButton');
             if (startButton) {
                 startButton.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    // Play menu select sound
+                    game.audioManager.play('menu_select');
+                    // Set flag to actually start the game when pointer lock is achieved
+                    game.shouldStartGame = true;
                     game.inputManager.requestPointerLock();
                 });
             }
@@ -8356,6 +8746,8 @@ Velocity: ${player.velocity.length().toFixed(2)}
             if (guideButton) {
                 guideButton.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    // Play menu select sound
+                    game.audioManager.play('menu_select');
                     document.getElementById('guideScreen').style.display = 'block';
                 });
             }
@@ -8365,9 +8757,12 @@ Velocity: ${player.velocity.length().toFixed(2)}
             if (closeGuideButton) {
                 closeGuideButton.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    // Play menu select sound
+                    game.audioManager.play('menu_select');
                     document.getElementById('guideScreen').style.display = 'none';
                 });
             }
+            
             
         });
     </script>
